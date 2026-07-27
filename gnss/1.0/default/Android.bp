@@ -45,6 +45,7 @@ cc_binary {
     defaults: ["hidl_defaults"],
     init_rc: ["android.hardware.gnss@1.0-service.rc"],
     srcs: ["service.cpp"],
+    enabled: false,
 
     shared_libs: [
         "liblog",
