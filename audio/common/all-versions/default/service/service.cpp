@@ -80,7 +80,7 @@ int main(int /* argc */, char* /* argv */ []) {
         ::android::ProcessState::self()->startThreadPool();
     }
 
-    ABinderProcess_setThreadPoolMaxThreadCount(1);
+    //ABinderProcess_setThreadPoolMaxThreadCount(1);  // A16DBG:P2:MECH BST audio: no threadpool limit (a13)
     ABinderProcess_startThreadPool();
 
     const int32_t defaultValue = -1;
