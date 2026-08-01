@@ -77,8 +77,6 @@ public:
     void setBuffer(buffer_handle_t buffer);
     bool postBuffer();
 
-    int64_t getVsyncPeriod() const;
-    void setRefreshCallback(HWC2_PFN_REFRESH callback, hwc2_callback_data_t data);
     void setVsyncCallback(HWC2_PFN_VSYNC callback, hwc2_callback_data_t data);
     void enableVsync(bool enable);
     void getCapabilities(uint32_t* outCount, int32_t* outCapabilities);
@@ -106,27 +104,20 @@ private:
 
         void start(int64_t first, int64_t period);
         void stop();
-        int64_t getPeriod() const;
-        void setRefreshCallback(HWC2_PFN_REFRESH callback, hwc2_callback_data_t data);
         void setCallback(HWC2_PFN_VSYNC callback, hwc2_callback_data_t data);
         void enableCallback(bool enable);
 
     private:
         void vsyncLoop();
         bool waitUntilNextVsync();
-        bool syncFpsWithConfigLocked(int64_t timestamp);
 
         std::thread mThread;
         int64_t mNextVsync{0};
         int64_t mPeriod{0};
-        int64_t mBasePeriod{0};
-        int64_t mNextFpsPoll{0};
 
-        mutable std::mutex mMutex;
+        std::mutex mMutex;
         std::condition_variable mCondition;
         bool mStarted{false};
-        HWC2_PFN_REFRESH mRefreshCallback{nullptr};
-        hwc2_callback_data_t mRefreshCallbackData{nullptr};
         HWC2_PFN_VSYNC mCallback{nullptr};
         hwc2_callback_data_t mCallbackData{nullptr};
         bool mCallbackEnabled{false};

@@ -21,7 +21,6 @@
 #include "hwc2onfbadapter/HWC2OnFbAdapter.h"
 
 #include <algorithm>
-#include <chrono>
 #include <type_traits>
 
 #include <inttypes.h>
@@ -29,12 +28,9 @@
 #include <sys/prctl.h>
 #include <unistd.h> // for close
 
-#include <cutils/properties.h>
 #include <hardware/fb.h>
 #include <log/log.h>
 #include <sync/sync.h>
-
-using namespace std::chrono_literals;
 
 using namespace HWC2;
 
@@ -63,7 +59,6 @@ int32_t registerCallbackHook(hwc2_device_t* device, int32_t descriptor,
             }
             break;
         case HWC2_CALLBACK_REFRESH:
-            adapter.setRefreshCallback(reinterpret_cast<HWC2_PFN_REFRESH>(pointer), callbackData);
             break;
         case HWC2_CALLBACK_VSYNC:
             adapter.setVsyncCallback(reinterpret_cast<HWC2_PFN_VSYNC>(pointer), callbackData);
@@ -279,7 +274,7 @@ int32_t getDisplayAttributeHook(hwc2_device_t* device, hwc2_display_t display, h
             *outValue = int32_t(info.height);
             break;
         case HWC2_ATTRIBUTE_VSYNC_PERIOD:
-            *outValue = int32_t(adapter.getVsyncPeriod());
+            *outValue = int32_t(info.vsync_period_ns);
             break;
         case HWC2_ATTRIBUTE_DPI_X:
             *outValue = int32_t(info.xdpi_scaled);
@@ -795,15 +790,6 @@ bool HWC2OnFbAdapter::postBuffer() {
     return error == 0;
 }
 
-int64_t HWC2OnFbAdapter::getVsyncPeriod() const {
-    return mVsyncThread.getPeriod();
-}
-
-void HWC2OnFbAdapter::setRefreshCallback(HWC2_PFN_REFRESH callback,
-                                         hwc2_callback_data_t data) {
-    mVsyncThread.setRefreshCallback(callback, data);
-}
-
 void HWC2OnFbAdapter::setVsyncCallback(HWC2_PFN_VSYNC callback, hwc2_callback_data_t data) {
     mVsyncThread.setCallback(callback, data);
 }
@@ -857,7 +843,6 @@ bool HWC2OnFbAdapter::VsyncThread::sleepUntil(int64_t t) {
 void HWC2OnFbAdapter::VsyncThread::start(int64_t firstVsync, int64_t period) {
     mNextVsync = firstVsync;
     mPeriod = period;
-    mBasePeriod = period;
     mStarted = true;
     mThread = std::thread(&VsyncThread::vsyncLoop, this);
 }
@@ -871,42 +856,10 @@ void HWC2OnFbAdapter::VsyncThread::stop() {
     mThread.join();
 }
 
-int64_t HWC2OnFbAdapter::VsyncThread::getPeriod() const {
-    std::lock_guard<std::mutex> lock(mMutex);
-    return mPeriod;
-}
-
-void HWC2OnFbAdapter::VsyncThread::setRefreshCallback(
-        HWC2_PFN_REFRESH callback, hwc2_callback_data_t data) {
-    std::lock_guard<std::mutex> lock(mMutex);
-    mRefreshCallback = callback;
-    mRefreshCallbackData = data;
-}
-
 void HWC2OnFbAdapter::VsyncThread::setCallback(HWC2_PFN_VSYNC callback, hwc2_callback_data_t data) {
     std::lock_guard<std::mutex> lock(mMutex);
     mCallback = callback;
     mCallbackData = data;
-}
-
-bool HWC2OnFbAdapter::VsyncThread::syncFpsWithConfigLocked(int64_t timestamp) {
-    if (timestamp < mNextFpsPoll) {
-        return false;
-    }
-    mNextFpsPoll = timestamp + 1'000'000'000;
-
-    const int fps = property_get_int32("bst.max_fps", 0);
-    int64_t targetPeriod = mBasePeriod;
-    if (fps > 0 && fps <= 240) {
-        targetPeriod = 1'000'000'000 / fps;
-    }
-    if (targetPeriod == mPeriod) {
-        return false;
-    }
-
-    mPeriod = targetPeriod;
-    mNextVsync = timestamp + targetPeriod;
-    return true;
 }
 
 void HWC2OnFbAdapter::VsyncThread::enableCallback(bool enable) {
@@ -927,33 +880,13 @@ void HWC2OnFbAdapter::VsyncThread::vsyncLoop() {
 
     while (true) {
         if (!mCallbackEnabled) {
-            mCondition.wait_for(lock, 1s,
-                                [this] { return mCallbackEnabled || !mStarted; });
+            mCondition.wait(lock, [this] { return mCallbackEnabled || !mStarted; });
             if (!mStarted) {
                 break;
             }
-            if (!mCallbackEnabled) {
-                const bool refresh = syncFpsWithConfigLocked(now());
-                const HWC2_PFN_REFRESH callback = mRefreshCallback;
-                const hwc2_callback_data_t callbackData = mRefreshCallbackData;
-                lock.unlock();
-                if (refresh && callback != nullptr) {
-                    callback(callbackData, getDisplayId());
-                }
-                lock.lock();
-                continue;
-            }
         }
 
-        const int64_t timestamp = now();
-        const bool refresh = syncFpsWithConfigLocked(timestamp);
-        const HWC2_PFN_REFRESH refreshCallback = mRefreshCallback;
-        const hwc2_callback_data_t refreshCallbackData = mRefreshCallbackData;
         lock.unlock();
-
-        if (refresh && refreshCallback != nullptr) {
-            refreshCallback(refreshCallbackData, getDisplayId());
-        }
 
         // adjust mNextVsync if necessary
         int64_t t = now();
