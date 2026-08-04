@@ -17,6 +17,7 @@
 #ifndef ANDROID_SF_HWC2_ON_FB_ADAPTER_H
 #define ANDROID_SF_HWC2_ON_FB_ADAPTER_H
 
+#include <atomic>
 #include <condition_variable>
 #include <mutex>
 #include <string>
@@ -56,6 +57,7 @@ public:
     };
     const Info& getInfo() const;
 
+    void updateVsyncPeriod();
     void updateDebugString();
     const std::string& getDebugString() const;
 
@@ -77,6 +79,7 @@ public:
     void setBuffer(buffer_handle_t buffer);
     bool postBuffer();
 
+    void setRefreshCallback(HWC2_PFN_REFRESH callback, hwc2_callback_data_t data);
     void setVsyncCallback(HWC2_PFN_VSYNC callback, hwc2_callback_data_t data);
     void enableVsync(bool enable);
     void getCapabilities(uint32_t* outCount, int32_t* outCapabilities);
@@ -104,12 +107,15 @@ private:
 
         void start(int64_t first, int64_t period);
         void stop();
+        void setCallback(HWC2_PFN_REFRESH callback, hwc2_callback_data_t data);
         void setCallback(HWC2_PFN_VSYNC callback, hwc2_callback_data_t data);
         void enableCallback(bool enable);
+        int64_t getRefreshPeriod() const { return mRefreshPeriod.load(); }
 
     private:
         void vsyncLoop();
         bool waitUntilNextVsync();
+        bool syncFpsWithConfigLocked();
 
         std::thread mThread;
         int64_t mNextVsync{0};
@@ -121,6 +127,9 @@ private:
         HWC2_PFN_VSYNC mCallback{nullptr};
         hwc2_callback_data_t mCallbackData{nullptr};
         bool mCallbackEnabled{false};
+        std::atomic<int64_t> mRefreshPeriod{0};
+        HWC2_PFN_REFRESH mRefreshCallback{nullptr};
+        hwc2_callback_data_t mRefreshCallbackData{nullptr};
     };
     VsyncThread mVsyncThread;
 };
