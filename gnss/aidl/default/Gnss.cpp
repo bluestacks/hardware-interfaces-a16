@@ -35,6 +35,7 @@
 #include "GnssVisibilityControl.h"
 #include "MeasurementCorrectionsInterface.h"
 #include "Utils.h"
+#include "MockLocation.h"
 
 namespace aidl::android::hardware::gnss {
 using ::android::hardware::gnss::common::Utils;
@@ -128,7 +129,13 @@ ScopedAStatus Gnss::setCallback(const std::shared_ptr<IGnssCallback>& callback) 
                 if (currentLocation != nullptr) {
                     this->reportLocation(*currentLocation);
                 } else {
-                    const auto location = Utils::getMockLocation();
+                    auto location = Utils::getMockLocation();
+                    // BS-A16: override with bst.config.sysLoc when set
+                    double bstLat, bstLon;
+                    if (::android::hardware::gnss::common::bst::getSysLocOverride(&bstLat, &bstLon)) {
+                        location.latitudeDegrees = bstLat;
+                        location.longitudeDegrees = bstLon;
+                    }
                     this->reportLocation(location);
                 }
                 mReportedLocationCount += 1;

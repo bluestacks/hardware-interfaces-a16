@@ -30,6 +30,9 @@ extern float gMockAltitudeMeters;
 extern float gMockBearingDegrees;
 extern float gMockSpeedMetersPerSec;
 
+namespace bst {
+bool getSysLocOverride(double* outLat, double* outLon);
+}  // namespace bst
 }  // namespace common
 }  // namespace gnss
 }  // namespace hardware
